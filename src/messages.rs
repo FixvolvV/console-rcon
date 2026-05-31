@@ -5,13 +5,16 @@
 //! Этот модуль содержит все структуры данных, которые мы отправляем и получаем
 //! через WebSocket-соединение с FastAPI сервером.
 //!
-//! В Rust мы используем serde для автоматической сериализации (Rust → JSON)
-//! и десериализации (JSON → Rust). Атрибут #[derive(Serialize, Deserialize)]
-//! генерирует весь необходимый код автоматически.
+//! ПРОТОКОЛ:
+//! Все сообщения (и исходящие, и входящие) используют поле "type" для
+//! идентификации типа сообщения. Это упрощает парсинг и единообразит формат.
+//!
+//! Возможные типы:
+//! - Исходящие: "auth", "stdout"
+//! - Входящие:  "auth_access", "auth_denied", "stdin"
 //!
 //! =============================================================================
 
-// Импортируем макросы derive из serde для автогенерации кода сериализации
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -20,15 +23,10 @@ use serde::{Deserialize, Serialize};
 
 /// Сообщение аутентификации — отправляется первым после подключения к WebSocket.
 ///
-/// API использует это сообщение чтобы:
-/// 1. Проверить secret_key и убедиться, что это легитимный wrapper
-/// 2. Зарегистрировать сервер с именем `server` в системе
-/// 3. Знать тип сервера (SCPSL, Minecraft и т.д.) для правильной обработки
-///
 /// # Пример JSON
 /// ```json
 /// {
-///   "action": "auth",
+///   "type": "auth",
 ///   "server": "server1",
 ///   "server_type": "SCPSL",
 ///   "secret_key": "my-secret-key"
@@ -36,15 +34,14 @@ use serde::{Deserialize, Serialize};
 /// ```
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthMessage {
-    /// Тип сообщения — всегда "auth" для этой структуры.
-    /// Используем "action" вместо "type", так как API ожидает это поле.
-    #[serde(rename = "action")]
-    pub action: String,
+    /// Тип сообщения — всегда "auth"
+    #[serde(rename = "type")]
+    pub msg_type: String,
 
-    /// Имя сервера (например, "server1", "lobby", "event-server")
+    /// Имя сервера
     pub server: String,
 
-    /// Тип сервера (например, "SCPSL", "Minecraft")
+    /// Тип сервера (SCPSL, Minecraft и т.д.)
     pub server_type: String,
 
     /// Секретный ключ для аутентификации
@@ -53,14 +50,9 @@ pub struct AuthMessage {
 
 impl AuthMessage {
     /// Создаёт новое auth-сообщение с заданными параметрами.
-    ///
-    /// # Аргументы
-    /// * `server` - Имя сервера
-    /// * `server_type` - Тип сервера
-    /// * `secret_key` - Секретный ключ
     pub fn new(server: &str, server_type: &str, secret_key: &str) -> Self {
         Self {
-            action: "auth".to_string(),
+            msg_type: "auth".to_string(),
             server: server.to_string(),
             server_type: server_type.to_string(),
             secret_key: secret_key.to_string(),
@@ -69,9 +61,6 @@ impl AuthMessage {
 }
 
 /// Сообщение с выводом консоли — отправляется при каждой строке из stdout/stderr.
-///
-/// Wrapper читает stdout/stderr процесса SCPSL построчно и отправляет
-/// каждую строку в таком формате на API.
 ///
 /// # Пример JSON
 /// ```json
@@ -96,10 +85,6 @@ pub struct StdoutMessage {
 
 impl StdoutMessage {
     /// Создаёт новое stdout-сообщение.
-    ///
-    /// # Аргументы
-    /// * `server` - Имя сервера
-    /// * `content` - Строка из консоли SCPSL
     pub fn new(server: &str, content: String) -> Self {
         Self {
             msg_type: "stdout".to_string(),
@@ -113,27 +98,39 @@ impl StdoutMessage {
 // ВХОДЯЩИЕ СООБЩЕНИЯ (API → Wrapper)
 // =============================================================================
 
-/// Входящее сообщение от API — может быть разных типов.
+/// Входящее сообщение от API.
 ///
-/// API использует поле "action" для идентификации типа сообщения.
+/// Все варианты различаются по полю "type" в JSON.
+/// Атрибут `#[serde(tag = "type")]` говорит serde:
+/// "смотри на поле type и выбирай соответствующий вариант enum".
 ///
 /// # Примеры JSON
 /// ```json
-/// {"action": "auth_success", "server": "server1"}
-/// {"action": "stdin", "server": "server1", "content": "reload"}
+/// {"type": "auth_access", "server": "server1"}
+/// {"type": "auth_denied", "server": "server1", "reason": "wrong key"}
+/// {"type": "stdin", "server": "server1", "content": "reload"}
 /// ```
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "action")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum IncomingMessage {
-    /// Подтверждение успешной авторизации
-    #[serde(rename = "auth_success")]
-    AuthSuccess { server: String },
+    /// Подтверждение успешной авторизации.
+    /// Имя варианта `AuthAccess` сериализуется как `auth_access`
+    /// благодаря `rename_all = "snake_case"`.
+    AuthAccess { server: String },
 
-    /// Команда для stdin — записать content в stdin процесса
-    #[serde(rename = "stdin")]
+    /// Отказ в авторизации.
+    /// Поле `reason` опционально (может прийти, а может нет).
+    AuthDenied {
+        server: String,
+        #[serde(default)]
+        reason: Option<String>,
+    },
+
+    /// Команда для stdin — записать `content` в stdin процесса.
     Stdin { server: String, content: String },
 
-    /// Любое другое сообщение — игнорируем
+    /// Любое другое сообщение — игнорируем.
+    /// Атрибут `#[serde(other)]` ловит всё, что не подошло ни под один вариант.
     #[serde(other)]
     Unknown,
 }
@@ -156,20 +153,7 @@ pub enum OutgoingMessage {
 
 impl OutgoingMessage {
     /// Сериализует сообщение в JSON-строку.
-    ///
-    /// # Возвращает
-    /// * `Ok(String)` — JSON-строка
-    /// * `Err(serde_json::Error)` — ошибка сериализации (маловероятно)
-    ///
-    /// # Пример
-    /// ```rust
-    /// let msg = OutgoingMessage::Stdout(StdoutMessage::new("s1", "hello".into()));
-    /// let json = msg.to_json().unwrap();
-    /// // json = r#"{"type":"stdout","server":"s1","content":"hello"}"#
-    /// ```
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        // match — основной способ работы с enum в Rust.
-        // Компилятор гарантирует, что мы обработали все варианты.
         match self {
             OutgoingMessage::Auth(msg) => serde_json::to_string(msg),
             OutgoingMessage::Stdout(msg) => serde_json::to_string(msg),
@@ -181,24 +165,21 @@ impl OutgoingMessage {
 // ТЕСТЫ
 // =============================================================================
 
-#[cfg(test)] // Этот модуль компилируется только при запуске тестов
+#[cfg(test)]
 mod tests {
-    use super::*; // Импортируем всё из родительского модуля
+    use super::*;
 
-    /// Тест сериализации AuthMessage
     #[test]
     fn test_auth_message_serialization() {
         let msg = AuthMessage::new("server1", "SCPSL", "secret");
         let json = serde_json::to_string(&msg).unwrap();
 
-        // Проверяем, что JSON содержит нужные поля
         assert!(json.contains(r#""type":"auth""#));
         assert!(json.contains(r#""server":"server1""#));
         assert!(json.contains(r#""server_type":"SCPSL""#));
         assert!(json.contains(r#""secret_key":"secret""#));
     }
 
-    /// Тест сериализации StdoutMessage
     #[test]
     fn test_stdout_message_serialization() {
         let msg = StdoutMessage::new("server1", "Hello World".to_string());
@@ -209,24 +190,51 @@ mod tests {
         assert!(json.contains(r#""content":"Hello World""#));
     }
 
-    /// Тест десериализации auth_success
     #[test]
-    fn test_auth_success_deserialization() {
-        let json = r#"{"action":"auth_success","server":"server1"}"#;
+    fn test_auth_access_deserialization() {
+        let json = r#"{"type":"auth_access","server":"server1"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
 
         match msg {
-            IncomingMessage::AuthSuccess { server } => {
+            IncomingMessage::AuthAccess { server } => {
                 assert_eq!(server, "server1");
             }
-            _ => panic!("Expected AuthSuccess message"),
+            _ => panic!("Expected AuthAccess message"),
         }
     }
 
-    /// Тест десериализации stdin-сообщения
+    #[test]
+    fn test_auth_denied_deserialization() {
+        let json = r#"{"type":"auth_denied","server":"server1","reason":"wrong key"}"#;
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+
+        match msg {
+            IncomingMessage::AuthDenied { server, reason } => {
+                assert_eq!(server, "server1");
+                assert_eq!(reason, Some("wrong key".to_string()));
+            }
+            _ => panic!("Expected AuthDenied message"),
+        }
+    }
+
+    #[test]
+    fn test_auth_denied_without_reason() {
+        // Поле reason опционально
+        let json = r#"{"type":"auth_denied","server":"server1"}"#;
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+
+        match msg {
+            IncomingMessage::AuthDenied { server, reason } => {
+                assert_eq!(server, "server1");
+                assert_eq!(reason, None);
+            }
+            _ => panic!("Expected AuthDenied message"),
+        }
+    }
+
     #[test]
     fn test_stdin_message_deserialization() {
-        let json = r#"{"action":"stdin","server":"server1","content":"reload"}"#;
+        let json = r#"{"type":"stdin","server":"server1","content":"reload"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
 
         match msg {
@@ -238,10 +246,9 @@ mod tests {
         }
     }
 
-    /// Тест десериализации неизвестного сообщения
     #[test]
     fn test_unknown_message_deserialization() {
-        let json = r#"{"action":"some_random_action","data":"whatever"}"#;
+        let json = r#"{"type":"some_random_type","data":"whatever"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
 
         assert!(matches!(msg, IncomingMessage::Unknown));

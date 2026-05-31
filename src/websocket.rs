@@ -264,8 +264,17 @@ impl WebSocketClient {
                 })?;
 
                 match parsed {
-                    IncomingMessage::AuthSuccess { server } => {
+                    IncomingMessage::AuthAccess { server } => {
                         info!("Авторизация успешна для сервера: {}", server);
+                    }
+
+                    IncomingMessage::AuthDenied { server, reason } => {
+                        error!(
+                            "Авторизация отклонена для {}: {}",
+                            server,
+                            reason.as_deref().unwrap_or("без указания причины")
+                        );
+                        return Err(WsError::ConnectionClosed);
                     }
 
                     IncomingMessage::Stdin { server, content } => {
