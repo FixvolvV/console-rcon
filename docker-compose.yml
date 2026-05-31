@@ -1,18 +1,19 @@
 services:
   server1:
     build:
-      context: .
+      context: ./console-rcon
       dockerfile: Dockerfile
     
     container_name: scpsl-server1
     
     environment:
-      - WRAPPER_SECRET_KEY=54443
-      - WRAPPER_SERVER_NAME=server1
-      - WRAPPER_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
-      - SCPSL_PORT=7777
+      - RCON_SECRET_KEY=54443
+      - RCON_SERVER_NAME=server1
+      - RCON_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
       - RUST_LOG=${LOG_LEVEL:-info}
-      - WRAPPER_STRIP_ANSI=true
+      - RCON_STRIP_ANSI=true
+      
+      - SERVER_PORT=7777
     
     ports:
       - "7777:7777/udp"
