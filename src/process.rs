@@ -1,9 +1,9 @@
 //! =============================================================================
-//! process.rs — Управление дочерним процессом SCPSL
+//! process.rs — Управление дочерним процессом сервера
 //! =============================================================================
 //!
 //! Этот модуль отвечает за:
-//! 1. Запуск LocalAdmin как дочернего процесса с piped stdin/stdout/stderr
+//! 1. Запуск сервера как дочернего процесса с piped stdin/stdout/stderr
 //! 2. Чтение stdout/stderr построчно и отправка в канал сообщений
 //! 3. Запись команд в stdin процесса
 //! 4. Корректное завершение процесса при shutdown
@@ -68,7 +68,7 @@ pub fn strip_ansi_codes(input: &str) -> String {
 // ЗАПУСК ПРОЦЕССА
 // =============================================================================
 
-/// Запускает SCPSL (LocalAdmin) как дочерний процесс.
+/// Запускает сервер как дочерний процесс.
 ///
 /// Процесс запускается с piped stdin/stdout/stderr — это значит, что мы
 /// получаем handles для чтения/записи в эти потоки программно.
@@ -79,20 +79,11 @@ pub fn strip_ansi_codes(input: &str) -> String {
 /// # Возвращает
 /// * `Ok(Child)` - Handle дочернего процесса
 /// * `Err(std::io::Error)` - Ошибка запуска (файл не найден, нет прав и т.д.)
-///
-/// # Пример
-/// ```rust
-/// let child = spawn_scpsl(&config).await?;
-/// // child.stdin, child.stdout, child.stderr теперь доступны
-/// ```
-pub async fn spawn_scpsl(config: &Config) -> std::io::Result<Child> {
-    info!(
-        "Запускаю SCPSL: {} {}",
-        config.scpsl_bin, config.port
-    );
+pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
+    info!("Запускаю сервер: {} {}", config.server_bin, config.port);
 
     // Command::new() создаёт builder для запуска процесса
-    let child = Command::new(&config.scpsl_bin)
+    let child = Command::new(&config.server_bin)
         // .arg() добавляет аргумент командной строки
         // port.to_string() — конвертируем u16 в String
         .arg(config.port.to_string())
@@ -126,12 +117,6 @@ pub async fn spawn_scpsl(config: &Config) -> std::io::Result<Child> {
 /// * `tx` - Sender канала для исходящих сообщений
 /// * `server_name` - Имя сервера для включения в сообщения
 /// * `strip_ansi` - Удалять ли ANSI-коды
-///
-/// # Пример
-/// ```rust
-/// let stdout = child.stdout.take().unwrap();
-/// tokio::spawn(read_stdout(stdout, tx.clone(), "server1".into(), true));
-/// ```
 pub async fn read_stdout(
     // tokio::process::ChildStdout — async reader для stdout процесса
     stdout: tokio::process::ChildStdout,
@@ -178,25 +163,19 @@ pub async fn read_stdout(
                 }
 
                 // Создаём сообщение
-                let msg = OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
+                let msg =
+                    OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
 
                 // Логируем на уровне debug (только если RUST_LOG=debug)
                 debug!(target: "stdout", "{}", content);
 
-                // Отправляем в канал.
-                // try_send() — неблокирующая отправка.
-                // Если канал полон — возвращает ошибку вместо ожидания.
+                // Отправляем в канал (неблокирующая отправка)
                 if let Err(e) = tx.try_send(msg) {
-                    // mpsc::error::TrySendError имеет два варианта:
-                    // - Full — канал переполнен
-                    // - Closed — receiver дропнут, канал закрыт
                     match e {
                         mpsc::error::TrySendError::Full(_) => {
-                            // Канал полон — логируем warning, сообщение потеряно
                             warn!("Буфер сообщений переполнен, сообщение отброшено");
                         }
                         mpsc::error::TrySendError::Closed(_) => {
-                            // Канал закрыт — receiver дропнут, прекращаем чтение
                             error!("Канал сообщений закрыт, прекращаю чтение stdout");
                             break;
                         }
@@ -204,8 +183,7 @@ pub async fn read_stdout(
                 }
             }
             Ok(None) => {
-                // EOF — stdout закрыт, процесс завершился
-                info!("SCPSL stdout закрыт (процесс завершился)");
+                info!("stdout закрыт (процесс завершился)");
                 break;
             }
             Err(e) => {
@@ -250,7 +228,8 @@ pub async fn read_stderr(
                     continue;
                 }
 
-                let msg = OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
+                let msg =
+                    OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
 
                 // Логируем stderr тоже на уровне debug, но с другим target
                 debug!(target: "stderr", "{}", content);
@@ -291,37 +270,17 @@ pub type StdinWriter = tokio::process::ChildStdin;
 
 /// Записывает команду в stdin процесса.
 ///
-/// Команда автоматически дополняется символом новой строки (\n),
-/// если его нет в конце.
-///
-/// # Аргументы
-/// * `stdin` - Мутабельная ссылка на stdin writer
-/// * `command` - Команда для выполнения
-///
-/// # Возвращает
-/// * `Ok(())` - Команда успешно записана
-/// * `Err(std::io::Error)` - Ошибка записи (процесс завершился)
-///
-/// # Пример
-/// ```rust
-/// write_stdin(&mut stdin, "reload remoteadmin").await?;
-/// ```
+/// Команда автоматически дополняется символом новой строки (\n).
 pub async fn write_stdin(stdin: &mut StdinWriter, command: &str) -> std::io::Result<()> {
-    // Добавляем \n если его нет
     let cmd = if command.ends_with('\n') {
         command.to_string()
     } else {
         format!("{}\n", command)
     };
 
-    info!("Отправляю команду в SCPSL: {}", command.trim());
+    info!("Отправляю команду: {}", command.trim());
 
-    // write_all() записывает все байты в writer
-    // .as_bytes() конвертирует &str в &[u8]
     stdin.write_all(cmd.as_bytes()).await?;
-
-    // flush() гарантирует, что данные отправлены в процесс
-    // (а не остались в буфере)
     stdin.flush().await?;
 
     Ok(())

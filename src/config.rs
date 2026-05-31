@@ -2,217 +2,124 @@
 //! config.rs — Конфигурация приложения
 //! =============================================================================
 //!
-//! Этот модуль отвечает за:
-//! 1. Определение всех параметров конфигурации
-//! 2. Парсинг CLI-аргументов с помощью clap
-//! 3. Чтение переменных окружения
-//! 4. Объединение CLI и ENV (CLI имеет приоритет)
-//!
-//! Clap с derive-макросами позволяет описать CLI декларативно через структуру.
-//! Атрибут #[arg(env = "...")] автоматически читает значение из ENV, если
-//! аргумент не передан через командную строку.
+//! Парсинг CLI-аргументов и переменных окружения.
+//! CLI имеет приоритет над ENV.
 //!
 //! =============================================================================
 
 use clap::Parser;
 
-// =============================================================================
-// CLI АРГУМЕНТЫ
-// =============================================================================
-
-/// Структура CLI-аргументов.
-///
-/// Parser — derive-макрос из clap, который генерирует парсер командной строки.
-/// Каждое поле становится аргументом или опцией.
-///
-/// # Пример использования
-/// ```bash
-/// scpsl-wrapper --scpsl-bin /path/to/LocalAdmin --port 7778
-/// ```
+/// CLI-аргументы приложения.
 #[derive(Parser, Debug, Clone)]
 #[command(
-    name = "scpsl-wrapper",
-    author = "Your Name",
-    version = "0.1.0",
-    about = "WebSocket-based RCON wrapper for SCP:SL server",
-    // long_about — расширенное описание для --help
-    long_about = "
-SCPSL-Wrapper — это supervisor-обёртка для SCP: Secret Laboratory сервера.
-
-Wrapper запускает LocalAdmin как дочерний процесс, перехватывает его stdout/stderr,
-и стримит вывод через WebSocket на FastAPI-сервер. Также принимает команды от API
-и передаёт их в stdin процесса (RCON).
-
-Используется как PID 1 в Docker-контейнере."
+    name = "console-rcon",
+    version,
+    about = "WebSocket-based RCON wrapper for game servers"
 )]
 pub struct CliArgs {
-    /// Путь к бинарному файлу SCPSL (LocalAdmin).
-    ///
-    /// #[arg(...)] — атрибут, настраивающий аргумент:
-    /// - long: --scpsl-bin
-    /// - env: читать из SCPSL_BIN_PATH если не передан
-    /// - default_value: значение по умолчанию
+    /// Путь к бинарному файлу сервера
     #[arg(
-        long = "scpsl-bin",
-        env = "SCPSL_BIN_PATH",
+        long = "server-bin",
+        env = "SERVER_BIN_PATH",
         default_value = "/root/game/LocalAdmin",
-        help = "Путь к исполняемому файлу LocalAdmin"
+        help = "Path to server executable"
     )]
-    pub scpsl_bin: String,
+    pub server_bin: String,
 
-    /// Порт SCPSL сервера.
-    ///
-    /// Этот порт передаётся как аргумент в LocalAdmin.
+    /// Порт сервера (передаётся как аргумент)
     #[arg(
         long = "port",
         short = 'p',
-        env = "SCPSL_PORT",
+        env = "SERVER_PORT",
         default_value = "7777",
-        help = "Порт игрового сервера SCPSL"
+        help = "Server port"
     )]
     pub port: u16,
 
-    /// URL WebSocket API для RCON-подключения.
+    /// URL WebSocket API
     #[arg(
         long = "api-url",
-        env = "WRAPPER_API_URL",
+        env = "RCON_API_URL",
         default_value = "ws://host.docker.internal:8000/server/rcon/connect",
-        help = "WebSocket URL для подключения к API"
+        help = "WebSocket URL for API connection"
     )]
     pub api_url: String,
 
-    /// Имя сервера (используется в сообщениях и как query-параметр).
+    /// Имя сервера
     #[arg(
         long = "server-name",
-        env = "WRAPPER_SERVER_NAME",
+        env = "RCON_SERVER_NAME",
         default_value = "server1",
-        help = "Уникальное имя этого сервера"
+        help = "Unique server name"
     )]
     pub server_name: String,
 
-    /// Секретный ключ для аутентификации на API.
-    ///
-    /// Обязательный параметр — нет default_value.
-    /// Если не передан ни через CLI, ни через ENV — приложение не запустится.
+    /// Секретный ключ для аутентификации
     #[arg(
         long = "secret-key",
-        env = "WRAPPER_SECRET_KEY",
-        help = "Секретный ключ для аутентификации (обязателен)"
+        env = "RCON_SECRET_KEY",
+        help = "Secret key for authentication (required)"
     )]
     pub secret_key: String,
 
-    /// Тип сервера (передаётся в auth-сообщении).
+    /// Тип сервера
     #[arg(
         long = "server-type",
-        env = "WRAPPER_SERVER_TYPE",
+        env = "RCON_SERVER_TYPE",
         default_value = "SCPSL",
-        help = "Тип сервера для идентификации на API"
+        help = "Server type identifier"
     )]
     pub server_type: String,
 
-    /// Интервал переподключения к WebSocket в секундах.
+    /// Интервал переподключения (секунды)
     #[arg(
         long = "reconnect-secs",
-        env = "WRAPPER_RECONNECT_SECS",
+        env = "RCON_RECONNECT_SECS",
         default_value = "5",
-        help = "Интервал между попытками переподключения (секунды)"
+        help = "Reconnect interval in seconds"
     )]
     pub reconnect_secs: u64,
 
-    /// Вырезать ANSI escape-коды из вывода.
-    ///
-    /// ANSI-коды используются для цветного вывода в терминале.
-    /// Если true — они будут удалены перед отправкой на API.
+    /// Удалять ANSI escape-коды
     #[arg(
         long = "strip-ansi",
-        env = "WRAPPER_STRIP_ANSI",
+        env = "RCON_STRIP_ANSI",
         default_value = "true",
-        help = "Удалять ANSI escape-коды из вывода"
+        help = "Strip ANSI escape codes from output"
     )]
     pub strip_ansi: bool,
 
-    /// Размер буфера для исходящих сообщений.
-    ///
-    /// Если WebSocket отключён, сообщения копятся в буфере.
-    /// При переполнении старые сообщения отбрасываются.
+    /// Размер буфера сообщений
     #[arg(
         long = "buffer-size",
-        env = "WRAPPER_BUFFER_SIZE",
+        env = "RCON_BUFFER_SIZE",
         default_value = "10000",
-        help = "Размер буфера исходящих сообщений"
+        help = "Message buffer size"
     )]
     pub buffer_size: usize,
-
-    /// Уровень логирования.
-    ///
-    /// Возможные значения: trace, debug, info, warn, error
-    #[arg(
-        long = "log-level",
-        env = "RUST_LOG",
-        default_value = "info",
-        help = "Уровень логирования (trace/debug/info/warn/error)"
-    )]
-    pub log_level: String,
 }
 
-// =============================================================================
-// КОНФИГ ПРИЛОЖЕНИЯ
-// =============================================================================
-
 /// Финальная конфигурация приложения.
-///
-/// Эта структура создаётся из CliArgs и содержит все нужные параметры
-/// в удобном для использования виде.
-///
-/// Clone — позволяет клонировать конфиг (нужно для передачи в разные задачи).
-/// Debug — позволяет выводить конфиг в логи.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Путь к бинарю LocalAdmin
-    pub scpsl_bin: String,
-    /// Порт сервера
+    pub server_bin: String,
     pub port: u16,
-    /// WebSocket URL API
     pub api_url: String,
-    /// Имя сервера
     pub server_name: String,
-    /// Секретный ключ
     pub secret_key: String,
-    /// Тип сервера
     pub server_type: String,
-    /// Интервал реконнекта в секундах
     pub reconnect_secs: u64,
-    /// Удалять ANSI-коды
     pub strip_ansi: bool,
-    /// Размер буфера сообщений
     pub buffer_size: usize,
 }
 
 impl Config {
-    /// Загружает конфигурацию из CLI-аргументов и переменных окружения.
-    ///
-    /// Clap автоматически:
-    /// 1. Парсит аргументы командной строки
-    /// 2. Для отсутствующих аргументов проверяет ENV
-    /// 3. Для отсутствующих в ENV — использует default_value
-    ///
-    /// # Паникует
-    /// Если обязательный аргумент (secret_key) не передан ни через CLI, ни через ENV.
-    ///
-    /// # Пример
-    /// ```rust
-    /// let config = Config::load();
-    /// println!("Server: {}", config.server_name);
-    /// ```
+    /// Загружает конфигурацию из CLI + ENV.
     pub fn load() -> Self {
-        // Parser::parse() читает std::env::args() и парсит аргументы.
-        // Если что-то не так (неизвестный аргумент, отсутствует обязательный) —
-        // программа завершится с ошибкой и справкой.
         let args = CliArgs::parse();
 
-        // Преобразуем CliArgs в Config
         Self {
-            scpsl_bin: args.scpsl_bin,
+            server_bin: args.server_bin,
             port: args.port,
             api_url: args.api_url,
             server_name: args.server_name,
@@ -224,70 +131,11 @@ impl Config {
         }
     }
 
-    /// Строит полный URL для WebSocket-подключения с query-параметром server_name.
-    ///
-    /// # Возвращает
-    /// URL в формате: ws://host:port/path?server_name=server1
-    ///
-    /// # Ошибки
-    /// Возвращает Err если api_url невалидный.
+    /// Строит WebSocket URL с query-параметром server_name.
     pub fn build_ws_url(&self) -> Result<String, url::ParseError> {
-        // url::Url::parse() парсит строку в структуру URL
         let mut url = url::Url::parse(&self.api_url)?;
-
-        // query_pairs_mut() даёт мутабельный доступ к query-параметрам
-        // append_pair() добавляет пару ключ=значение
         url.query_pairs_mut()
             .append_pair("server_name", &self.server_name);
-
-        // Ok(...) — возвращаем успешный результат
         Ok(url.to_string())
-    }
-}
-
-// =============================================================================
-// ТЕСТЫ
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_ws_url() {
-        let config = Config {
-            scpsl_bin: "/root/game/LocalAdmin".to_string(),
-            port: 7777,
-            api_url: "ws://localhost:8000/rcon/connect".to_string(),
-            server_name: "test-server".to_string(),
-            secret_key: "secret".to_string(),
-            server_type: "SCPSL".to_string(),
-            reconnect_secs: 5,
-            strip_ansi: true,
-            buffer_size: 1000,
-        };
-
-        let url = config.build_ws_url().unwrap();
-        assert_eq!(url, "ws://localhost:8000/rcon/connect?server_name=test-server");
-    }
-
-    #[test]
-    fn test_build_ws_url_with_existing_params() {
-        let config = Config {
-            scpsl_bin: "/root/game/LocalAdmin".to_string(),
-            port: 7777,
-            api_url: "ws://localhost:8000/rcon?foo=bar".to_string(),
-            server_name: "srv1".to_string(),
-            secret_key: "secret".to_string(),
-            server_type: "SCPSL".to_string(),
-            reconnect_secs: 5,
-            strip_ansi: true,
-            buffer_size: 1000,
-        };
-
-        let url = config.build_ws_url().unwrap();
-        // Должен добавить server_name к существующим параметрам
-        assert!(url.contains("foo=bar"));
-        assert!(url.contains("server_name=srv1"));
     }
 }

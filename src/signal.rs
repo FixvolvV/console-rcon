@@ -41,12 +41,12 @@ pub async fn wait_for_shutdown_signal() {
     // signal() создаёт future, который завершится при получении сигнала.
     // SignalKind::terminate() — это SIGTERM на Unix.
     // .expect() паникует если не удалось зарегистрировать обработчик.
-    let mut sigterm = signal(SignalKind::terminate())
-        .expect("Не удалось зарегистрировать обработчик SIGTERM");
+    let mut sigterm =
+        signal(SignalKind::terminate()).expect("Не удалось зарегистрировать обработчик SIGTERM");
 
     // SignalKind::interrupt() — это SIGINT (Ctrl+C).
-    let mut sigint = signal(SignalKind::interrupt())
-        .expect("Не удалось зарегистрировать обработчик SIGINT");
+    let mut sigint =
+        signal(SignalKind::interrupt()).expect("Не удалось зарегистрировать обработчик SIGINT");
 
     // tokio::select! — ждёт завершения одного из futures и выполняет
     // соответствующую ветку. Остальные futures отменяются.

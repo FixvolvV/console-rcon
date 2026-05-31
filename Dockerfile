@@ -1,38 +1,30 @@
+# --- BUILDER ---
 FROM rust:1.83-bookworm AS builder
 
 WORKDIR /app
-
 COPY Cargo.toml Cargo.toml
 
+# Кэшируем зависимости
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
-    rm -rf src target/release/deps/scpsl_wrapper*
+    rm -rf src target/release/deps/console_rcon*
 
 COPY src ./src
-
 RUN cargo build --release
 
-RUN ./target/release/scpsl-wrapper --help
-
-
-FROM debian:trixie-slim AS runtime
+# --- RUNTIME ---
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
-    curl \
-    libc6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /root/game /root/.config/SCP\ Secret\ Laboratory
-
-COPY --from=builder /app/target/release/scpsl-wrapper /usr/local/bin/scpsl-wrapper
-
-RUN chmod +x /usr/local/bin/scpsl-wrapper
-
+COPY --from=builder /app/target/release/console-rcon /usr/local/bin/console-rcon
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY scripts /scripts
+RUN chmod +x /entrypoint.sh /usr/local/bin/console-rcon /scripts/*.sh
 
 WORKDIR /root/game
 

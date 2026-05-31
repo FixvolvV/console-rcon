@@ -135,16 +135,18 @@ async fn main() {
     // ШАГ 3: Логируем конфигурацию
     // =========================================================================
 
-    info!("=== SCPSL Wrapper v{} ===", env!("CARGO_PKG_VERSION"));
+    info!(
+        "=== Console RCON Wrapper v{} ===",
+        env!("CARGO_PKG_VERSION")
+    );
     info!("Server name: {}", config.server_name);
     info!("Server type: {}", config.server_type);
-    info!("SCPSL binary: {}", config.scpsl_bin);
-    info!("SCPSL port: {}", config.port);
+    info!("Server binary: {}", config.server_bin);
+    info!("Server port: {}", config.port);
     info!("API URL: {}", config.api_url);
     info!("Reconnect interval: {} сек", config.reconnect_secs);
     info!("Strip ANSI: {}", config.strip_ansi);
     info!("Buffer size: {}", config.buffer_size);
-    // Не логируем secret_key в целях безопасности!
     info!("Secret key: [HIDDEN]");
 
     // =========================================================================
@@ -178,17 +180,17 @@ async fn main() {
     // ШАГ 6: Запуск SCPSL процесса
     // =========================================================================
 
-    info!("Запускаю SCPSL...");
+    info!("Запускаю сервер...");
 
-    // spawn_scpsl запускает LocalAdmin как дочерний процесс.
+    // spawn_server запускает сервер как дочерний процесс.
     // Возвращает Child — handle для управления процессом.
-    let mut child = match process::spawn_scpsl(&config).await {
+    let mut child = match process::spawn_server(&config).await {
         Ok(child) => child,
         Err(e) => {
-            error!("Не удалось запустить SCPSL: {}", e);
+            error!("Не удалось запустить сервер: {}", e);
             error!(
                 "Проверьте, что файл {} существует и исполняемый",
-                config.scpsl_bin
+                config.server_bin
             );
             // std::process::exit(1) завершает процесс с кодом ошибки
             std::process::exit(1);
@@ -273,20 +275,20 @@ async fn main() {
 
     // tokio::select! ждёт первого завершившегося future
     let exit_code = tokio::select! {
-        // Ждём завершения SCPSL процесса
+        // Ждём завершения процесса сервера
         status = child.wait() => {
             match status {
                 Ok(exit_status) => {
                     let code = exit_status.code().unwrap_or(1);
                     if exit_status.success() {
-                        info!("SCPSL завершился успешно (код {})", code);
+                        info!("Сервер завершился успешно (код {})", code);
                     } else {
-                        warn!("SCPSL завершился с ошибкой (код {})", code);
+                        warn!("Сервер завершился с ошибкой (код {})", code);
                     }
                     code
                 }
                 Err(e) => {
-                    error!("Ошибка ожидания завершения SCPSL: {}", e);
+                    error!("Ошибка ожидания завершения сервера: {}", e);
                     1
                 }
             }
@@ -294,7 +296,7 @@ async fn main() {
 
         // Ждём завершения задачи обработки сигналов
         _ = signal_handle => {
-            info!("Получен сигнал завершения, останавливаю SCPSL...");
+            info!("Получен сигнал завершения, останавливаю сервер...");
 
             // Корректно завершаем дочерний процесс
             let code = process::terminate_child(&mut child, 10).await.unwrap_or(0);
