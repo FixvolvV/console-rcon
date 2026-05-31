@@ -15,10 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/console-rcon /usr/local/bin/console-rcon
+COPY --from=builder /app/target/release/rcon-console /usr/local/bin/rcon-console
 COPY entrypoint.sh /entrypoint.sh
 COPY scripts /scripts
-RUN chmod +x /entrypoint.sh /usr/local/bin/console-rcon /scripts/*.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/rcon-console /scripts/*.sh
 
 WORKDIR /root/game
 

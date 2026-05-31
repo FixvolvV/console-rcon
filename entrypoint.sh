@@ -38,4 +38,4 @@ fi
 # Запуск wrapper
 # -----------------------------------------------------------------------------
 cd /root/game
-exec /usr/local/bin/console-rcon "$@"
+exec /usr/local/bin/rcon-console "$@"
