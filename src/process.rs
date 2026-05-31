@@ -99,7 +99,11 @@ pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
         // .spawn() запускает процесс и возвращает Result<Child>
         .spawn()?;
 
-    info!("SCPSL запущен с PID: {:?}", child.id());
+    info!(
+        "Сервер {} запущен с PID: {:?}",
+        config.server_type,
+        child.id()
+    );
     Ok(child)
 }
 
