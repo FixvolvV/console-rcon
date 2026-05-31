@@ -20,7 +20,5 @@ COPY entrypoint.sh /entrypoint.sh
 COPY scripts /scripts
 RUN chmod +x /entrypoint.sh /usr/local/bin/rcon-console /scripts/*.sh
 
-WORKDIR /root/game
-
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
