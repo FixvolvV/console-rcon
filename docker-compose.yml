@@ -12,6 +12,7 @@ services:
       - RCON_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
       - RUST_LOG=${LOG_LEVEL:-info}
       - RCON_STRIP_ANSI=true
+      - UPDATE_ON_START=false
       
       - SERVER_PORT=7777
     
