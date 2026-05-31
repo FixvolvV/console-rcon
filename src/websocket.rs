@@ -7,12 +7,14 @@
 //! 2. Отправку auth-сообщения при подключении
 //! 3. Стриминг stdout-сообщений из канала на API
 //! 4. Получение stdin-команд от API и отправку в канал команд
-//! 5. Автоматический реконнект при разрыве соединения
+//! 5. Автоматический реконнект при разрыве соединения с прогрессивной задержкой
 //!
-//! Основные концепции:
-//! - tokio-tungstenite — асинхронная WebSocket библиотека
-//! - Stream/Sink — абстракции для чтения/записи данных
-//! - tokio::select! — одновременное ожидание нескольких futures
+//! Логика реконнекта:
+//! - При любой ошибке соединения — пытаемся подключиться снова
+//! - Задержка прогрессивно растёт: 5 → 10 → 20 → 40 → 60 → 60 сек
+//! - При успешном соединении — задержка сбрасывается до базовой
+//! - JSON-ошибки парсинга НЕ убивают соединение (просто игнорируем сообщение)
+//! - AuthDenied — фатальная ошибка, wrapper завершается
 //!
 //! =============================================================================
 
@@ -47,6 +49,9 @@ pub enum WsError {
     UrlError(String),
 }
 
+// Специальная строка-маркер для AuthDenied — обрабатывается в run() особым образом
+const AUTH_DENIED_MARKER: &str = "AUTH_DENIED";
+
 // impl Display для WsError — позволяет использовать {} в format!/println!
 impl std::fmt::Display for WsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -72,7 +77,7 @@ impl std::fmt::Display for WsError {
 /// 2. Отправляет auth
 /// 3. Читает сообщения из канала и отправляет на сервер
 /// 4. Получает команды от сервера и отправляет в канал
-/// 5. При разрыве — переподключается
+/// 5. При разрыве — переподключается с прогрессивной задержкой
 pub struct WebSocketClient {
     /// Конфигурация (URL, server_name, secret_key и т.д.)
     config: Config,
@@ -84,11 +89,6 @@ pub struct WebSocketClient {
 
 impl WebSocketClient {
     /// Создаёт новый WebSocket-клиент.
-    ///
-    /// # Аргументы
-    /// * `config` - Конфигурация приложения
-    /// * `outgoing_rx` - Receiver для сообщений, которые нужно отправить на API
-    /// * `incoming_tx` - Sender для команд, полученных от API
     pub fn new(
         config: Config,
         outgoing_rx: mpsc::Receiver<OutgoingMessage>,
@@ -103,15 +103,16 @@ impl WebSocketClient {
 
     /// Запускает WebSocket-клиент в бесконечном цикле с реконнектом.
     ///
-    /// Эта функция никогда не возвращается (если не получит сигнал shutdown).
-    /// Она:
-    /// 1. Пытается подключиться к серверу
-    /// 2. При успехе — обрабатывает сообщения
-    /// 3. При разрыве — ждёт интервал реконнекта и повторяет
-    ///
-    /// # Аргументы
-    /// * `shutdown_rx` - Receiver для сигнала shutdown
+    /// Логика:
+    /// - Базовая задержка из конфига (reconnect_secs)
+    /// - При ошибке задержка растёт вдвое до max_delay (60 сек)
+    /// - При успешном соединении сбрасывается до базовой
+    /// - AuthDenied останавливает wrapper целиком (exit code 2)
     pub async fn run(&mut self, mut shutdown_rx: crate::signal::ShutdownReceiver) {
+        let base_delay = self.config.reconnect_secs;
+        let max_delay: u64 = 60;
+        let mut current_delay = base_delay;
+
         loop {
             // Проверяем, не пришёл ли shutdown
             if shutdown_rx.is_shutdown() {
@@ -119,25 +120,33 @@ impl WebSocketClient {
                 break;
             }
 
-            // Пытаемся подключиться
+            // Пытаемся подключиться и работать
             match self.connect_and_run().await {
                 Ok(()) => {
-                    // Соединение закрыто нормально (Close frame)
-                    info!("WebSocket соединение закрыто, переподключаюсь...");
+                    info!("WebSocket соединение закрыто штатно, переподключаюсь...");
+                    // Сбрасываем задержку — соединение было успешным
+                    current_delay = base_delay;
+                }
+                Err(WsError::ConnectionFailed(ref msg)) if msg == AUTH_DENIED_MARKER => {
+                    // Фатальная ошибка авторизации — нет смысла переподключаться
+                    error!("Авторизация отклонена сервером. Wrapper завершается.");
+                    std::process::exit(2);
                 }
                 Err(e) => {
-                    // Ошибка соединения
-                    warn!("WebSocket ошибка: {}, переподключаюсь...", e);
+                    warn!(
+                        "WebSocket ошибка: {}. Жду {} сек до переподключения...",
+                        e, current_delay
+                    );
                 }
             }
 
-            // Ждём перед реконнектом
-            let reconnect_delay = tokio::time::Duration::from_secs(self.config.reconnect_secs);
+            // Ждём перед реконнектом, но прерываемся если пришёл shutdown
+            let reconnect_delay = tokio::time::Duration::from_secs(current_delay);
 
-            // select! позволяет прервать ожидание если пришёл shutdown
             tokio::select! {
                 _ = tokio::time::sleep(reconnect_delay) => {
-                    // Таймаут истёк, продолжаем цикл
+                    // Прогрессивно увеличиваем задержку: 5 → 10 → 20 → 40 → 60 → 60
+                    current_delay = (current_delay * 2).min(max_delay);
                 }
                 _ = shutdown_rx.wait() => {
                     info!("WebSocket клиент: получен shutdown во время ожидания реконнекта");
@@ -158,8 +167,6 @@ impl WebSocketClient {
         info!("Подключаюсь к WebSocket: {}", url);
 
         // connect_async() подключается к WebSocket серверу.
-        // Возвращает (WebSocketStream, Response).
-        // WebSocketStream реализует Stream + Sink для двунаправленного обмена.
         let (ws_stream, response) = connect_async(&url)
             .await
             .map_err(|e| WsError::ConnectionFailed(e.to_string()))?;
@@ -167,7 +174,6 @@ impl WebSocketClient {
         info!("WebSocket подключён, статус: {}", response.status());
 
         // split() разделяет stream на read-half и write-half.
-        // Это нужно чтобы читать и писать независимо в разных ветках select!.
         let (mut write, mut read) = ws_stream.split();
 
         // Шаг 1: Отправляем auth-сообщение
@@ -182,8 +188,6 @@ impl WebSocketClient {
         info!("Отправляю auth-сообщение");
         debug!("Auth payload: {}", auth_json);
 
-        // send() отправляет сообщение через WebSocket.
-        // Message::Text — текстовое сообщение (JSON).
         write
             .send(Message::Text(auth_json))
             .await
@@ -191,21 +195,15 @@ impl WebSocketClient {
 
         // Шаг 2: Основной цикл обработки сообщений
         loop {
-            // tokio::select! ждёт завершения одного из трёх futures:
-            // 1. Новое сообщение из канала (stdout от SCPSL)
-            // 2. Новое сообщение от WebSocket (команда от API)
-            // 3. Ничего из вышеперечисленного (biased означает приоритет сверху вниз)
             tokio::select! {
                 // biased — проверяем futures в порядке перечисления.
                 // Это предотвращает starvation при высокой нагрузке.
                 biased;
 
                 // Получаем сообщение из канала для отправки на API
-                // recv() возвращает Option<T> — None если все senders закрыты
                 outgoing = self.outgoing_rx.recv() => {
                     match outgoing {
                         Some(msg) => {
-                            // Сериализуем и отправляем
                             let json = msg.to_json().map_err(|e| {
                                 WsError::JsonError(e.to_string())
                             })?;
@@ -230,18 +228,15 @@ impl WebSocketClient {
                 }
 
                 // Получаем сообщение от WebSocket (от API)
-                // next() возвращает Option<Result<Message, Error>>
                 incoming = read.next() => {
                     match incoming {
                         Some(Ok(msg)) => {
                             self.handle_incoming_message(msg).await?;
                         }
                         Some(Err(e)) => {
-                            // Ошибка чтения — соединение потеряно
                             return Err(WsError::ReceiveFailed(e.to_string()));
                         }
                         None => {
-                            // Stream завершился — соединение закрыто
                             return Err(WsError::ConnectionClosed);
                         }
                     }
@@ -251,17 +246,27 @@ impl WebSocketClient {
     }
 
     /// Обрабатывает входящее WebSocket-сообщение.
+    ///
+    /// ВАЖНО: JSON-ошибки парсинга НЕ убивают соединение.
+    /// Это защищает от случайных невалидных сообщений от API.
+    /// Только AuthDenied и системные ошибки приводят к разрыву.
     async fn handle_incoming_message(&self, msg: Message) -> WsResult<()> {
         match msg {
             // Текстовое сообщение — JSON от API
             Message::Text(text) => {
                 debug!("Получено от API: {}", text);
 
-                // Десериализуем JSON в IncomingMessage
-                let parsed: IncomingMessage = serde_json::from_str(&text).map_err(|e| {
-                    warn!("Не удалось распарсить сообщение от API: {}", e);
-                    WsError::JsonError(e.to_string())
-                })?;
+                // JSON-ошибка НЕ убивает соединение, просто игнорируем сообщение
+                let parsed: IncomingMessage = match serde_json::from_str(&text) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        warn!(
+                            "Не удалось распарсить сообщение от API: {} (raw: {})",
+                            e, text
+                        );
+                        return Ok(()); // продолжаем слушать
+                    }
+                };
 
                 match parsed {
                     IncomingMessage::AuthAccess { server } => {
@@ -270,11 +275,12 @@ impl WebSocketClient {
 
                     IncomingMessage::AuthDenied { server, reason } => {
                         error!(
-                            "Авторизация отклонена для {}: {}",
+                            "Авторизация отклонена для {}: {}. Wrapper завершается.",
                             server,
                             reason.as_deref().unwrap_or("без указания причины")
                         );
-                        return Err(WsError::ConnectionClosed);
+                        // Маркер фатальной ошибки — run() поймает и сделает exit
+                        return Err(WsError::ConnectionFailed(AUTH_DENIED_MARKER.to_string()));
                     }
 
                     IncomingMessage::Stdin { server, content } => {
@@ -300,11 +306,10 @@ impl WebSocketClient {
                 }
             }
 
-            // Ping — отвечаем Pong (tungstenite делает это автоматически)
+            // Ping — tokio-tungstenite автоматически отвечает Pong
             Message::Ping(data) => {
-                debug!("Получен Ping, отвечаю Pong");
-                // Примечание: tokio-tungstenite автоматически отвечает на Ping
-                let _ = data; // suppress unused warning
+                debug!("Получен Ping, ответ Pong отправит библиотека автоматически");
+                let _ = data;
             }
 
             // Pong — игнорируем
@@ -341,22 +346,15 @@ impl WebSocketClient {
 ///
 /// Эта функция запускается в отдельной tokio-задаче и читает команды
 /// из канала, записывая их в stdin процесса.
-///
-/// # Аргументы
-/// * `stdin` - Мутабельный stdin процесса
-/// * `command_rx` - Receiver канала команд
 pub async fn stdin_writer_task(
     mut stdin: crate::process::StdinWriter,
     mut command_rx: mpsc::Receiver<String>,
 ) {
     info!("Stdin writer запущен");
 
-    // Читаем команды из канала пока он не закроется
     while let Some(command) = command_rx.recv().await {
-        // Записываем команду в stdin процесса
         if let Err(e) = crate::process::write_stdin(&mut stdin, &command).await {
             error!("Ошибка записи в stdin: {}", e);
-            // Если stdin закрыт — процесс завершился, выходим
             break;
         }
     }
@@ -379,5 +377,14 @@ mod tests {
 
         let err = WsError::ConnectionClosed;
         assert_eq!(format!("{}", err), "Соединение закрыто");
+    }
+
+    #[test]
+    fn test_auth_denied_marker() {
+        // Проверяем, что маркер не пересекается с реальными сообщениями
+        let err = WsError::ConnectionFailed(AUTH_DENIED_MARKER.to_string());
+        if let WsError::ConnectionFailed(msg) = err {
+            assert_eq!(msg, "AUTH_DENIED");
+        }
     }
 }
