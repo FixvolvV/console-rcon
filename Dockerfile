@@ -1,5 +1,5 @@
 # --- BUILDER ---
-FROM rust::latest AS builder
+FROM rust:latest AS builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.toml
