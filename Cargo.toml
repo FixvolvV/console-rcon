@@ -7,13 +7,13 @@
 
 [package]
 # Имя пакета — будет использоваться как имя бинарного файла
-name = "scpsl-wrapper"
+name = "rcon-console"
 # Версия проекта в формате SemVer (major.minor.patch)
 version = "0.1.0"
 # Edition — версия "диалекта" Rust. 2021 — последняя стабильная на момент написания
 edition = "2021"
 # Краткое описание для crates.io (если будем публиковать)
-description = "WebSocket-based RCON wrapper for SCP: Secret Laboratory server"
+description = "WebSocket-based RCON wrapper"
 # Лицензия проекта
 license = "MIT"
 
