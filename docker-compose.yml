@@ -1,0 +1,63 @@
+services:
+  server1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    container_name: scpsl-server1
+    
+    environment:
+      - WRAPPER_SECRET_KEY=54443
+      - WRAPPER_SERVER_NAME=server1
+      - WRAPPER_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
+      - SCPSL_PORT=7777
+      - RUST_LOG=${LOG_LEVEL:-info}
+      - WRAPPER_STRIP_ANSI=true
+    
+    ports:
+      - "7777:7777/udp"
+    
+    volumes:
+      - ./game:/root/game
+      - ./config:/root/.config
+    
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    
+  # server2:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+    
+  #   container_name: scpsl-server2
+    
+  #   environment:
+  #     - WRAPPER_SECRET_KEY=${RCON_SECRET_KEY:-change-me-in-production}
+  #     - WRAPPER_SERVER_NAME=server2
+  #     - WRAPPER_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
+  #     - SCPSL_PORT=7778
+  #     - RUST_LOG=${LOG_LEVEL:-info}
+  #     - WRAPPER_STRIP_ANSI=true
+    
+  #   ports:
+  #     - "7778:7778/udp"
+    
+  #   volumes:
+  #     - ./game:/root/game
+  #     - ./config:/root/.config
+    
+  #   restart: unless-stopped
+    
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 4G
+  #       reservations:
+  #         memory: 2G
+
