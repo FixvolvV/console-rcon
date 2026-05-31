@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 /// # Пример JSON
 /// ```json
 /// {
-///   "type": "auth",
+///   "action": "auth",
 ///   "server": "server1",
 ///   "server_type": "SCPSL",
 ///   "secret_key": "my-secret-key"
@@ -37,10 +37,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthMessage {
     /// Тип сообщения — всегда "auth" для этой структуры.
-    /// #[serde(rename = "type")] нужен потому что `type` — зарезервированное
-    /// слово в Rust, мы не можем назвать поле `type`.
-    #[serde(rename = "type")]
-    pub msg_type: String,
+    /// Используем "action" вместо "type", так как API ожидает это поле.
+    #[serde(rename = "action")]
+    pub action: String,
 
     /// Имя сервера (например, "server1", "lobby", "event-server")
     pub server: String,
@@ -59,14 +58,9 @@ impl AuthMessage {
     /// * `server` - Имя сервера
     /// * `server_type` - Тип сервера
     /// * `secret_key` - Секретный ключ
-    ///
-    /// # Пример
-    /// ```rust
-    /// let auth = AuthMessage::new("server1", "SCPSL", "secret123");
-    /// ```
     pub fn new(server: &str, server_type: &str, secret_key: &str) -> Self {
         Self {
-            msg_type: "auth".to_string(), // .to_string() конвертирует &str в owned String
+            action: "auth".to_string(),
             server: server.to_string(),
             server_type: server_type.to_string(),
             secret_key: secret_key.to_string(),
@@ -121,35 +115,25 @@ impl StdoutMessage {
 
 /// Входящее сообщение от API — может быть разных типов.
 ///
-/// Мы используем enum с #[serde(tag = "type")] — это значит, что serde
-/// будет смотреть на поле "type" в JSON и выбирать нужный вариант enum.
+/// API использует поле "action" для идентификации типа сообщения.
 ///
-/// Если type="stdin" — десериализуется в Stdin вариант.
-/// Если type неизвестен — десериализуется в Unknown.
-///
-/// # Пример JSON для stdin
+/// # Примеры JSON
 /// ```json
-/// {
-///   "type": "stdin",
-///   "server": "server1",
-///   "content": "reload remoteadmin"
-/// }
+/// {"action": "auth_success", "server": "server1"}
+/// {"action": "stdin", "server": "server1", "content": "reload"}
 /// ```
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "action")]
 pub enum IncomingMessage {
-    /// Команда для stdin — нужно записать content в stdin процесса SCPSL
-    #[serde(rename = "stdin")]
-    Stdin {
-        /// Имя сервера — должно совпадать с нашим, иначе игнорируем
-        server: String,
-        /// Команда для выполнения
-        content: String,
-    },
+    /// Подтверждение успешной авторизации
+    #[serde(rename = "auth_success")]
+    AuthSuccess { server: String },
 
-    /// Любое другое сообщение с неизвестным типом.
-    /// #[serde(other)] ловит все варианты, которые не описаны выше.
-    /// Это предотвращает ошибку десериализации при получении неизвестного типа.
+    /// Команда для stdin — записать content в stdin процесса
+    #[serde(rename = "stdin")]
+    Stdin { server: String, content: String },
+
+    /// Любое другое сообщение — игнорируем
     #[serde(other)]
     Unknown,
 }
@@ -225,13 +209,26 @@ mod tests {
         assert!(json.contains(r#""content":"Hello World""#));
     }
 
+    /// Тест десериализации auth_success
+    #[test]
+    fn test_auth_success_deserialization() {
+        let json = r#"{"action":"auth_success","server":"server1"}"#;
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+
+        match msg {
+            IncomingMessage::AuthSuccess { server } => {
+                assert_eq!(server, "server1");
+            }
+            _ => panic!("Expected AuthSuccess message"),
+        }
+    }
+
     /// Тест десериализации stdin-сообщения
     #[test]
     fn test_stdin_message_deserialization() {
-        let json = r#"{"type":"stdin","server":"server1","content":"reload"}"#;
+        let json = r#"{"action":"stdin","server":"server1","content":"reload"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
 
-        // Проверяем, что это именно Stdin вариант
         match msg {
             IncomingMessage::Stdin { server, content } => {
                 assert_eq!(server, "server1");
@@ -244,10 +241,9 @@ mod tests {
     /// Тест десериализации неизвестного сообщения
     #[test]
     fn test_unknown_message_deserialization() {
-        let json = r#"{"type":"some_random_type","data":"whatever"}"#;
+        let json = r#"{"action":"some_random_action","data":"whatever"}"#;
         let msg: IncomingMessage = serde_json::from_str(json).unwrap();
 
-        // Должен быть Unknown, а не ошибка
         assert!(matches!(msg, IncomingMessage::Unknown));
     }
 }

@@ -132,8 +132,7 @@ impl WebSocketClient {
             }
 
             // Ждём перед реконнектом
-            let reconnect_delay =
-                tokio::time::Duration::from_secs(self.config.reconnect_secs);
+            let reconnect_delay = tokio::time::Duration::from_secs(self.config.reconnect_secs);
 
             // select! позволяет прервать ожидание если пришёл shutdown
             tokio::select! {
@@ -151,23 +150,21 @@ impl WebSocketClient {
     /// Подключается к серверу и обрабатывает сообщения до разрыва.
     async fn connect_and_run(&mut self) -> WsResult<()> {
         // Строим URL с query-параметром
-        let url = self.config.build_ws_url().map_err(|e| {
-            WsError::UrlError(e.to_string())
-        })?;
+        let url = self
+            .config
+            .build_ws_url()
+            .map_err(|e| WsError::UrlError(e.to_string()))?;
 
         info!("Подключаюсь к WebSocket: {}", url);
 
         // connect_async() подключается к WebSocket серверу.
         // Возвращает (WebSocketStream, Response).
         // WebSocketStream реализует Stream + Sink для двунаправленного обмена.
-        let (ws_stream, response) = connect_async(&url).await.map_err(|e| {
-            WsError::ConnectionFailed(e.to_string())
-        })?;
+        let (ws_stream, response) = connect_async(&url)
+            .await
+            .map_err(|e| WsError::ConnectionFailed(e.to_string()))?;
 
-        info!(
-            "WebSocket подключён, статус: {}",
-            response.status()
-        );
+        info!("WebSocket подключён, статус: {}", response.status());
 
         // split() разделяет stream на read-half и write-half.
         // Это нужно чтобы читать и писать независимо в разных ветках select!.
@@ -179,18 +176,18 @@ impl WebSocketClient {
             &self.config.server_type,
             &self.config.secret_key,
         );
-        let auth_json = serde_json::to_string(&auth_msg).map_err(|e| {
-            WsError::JsonError(e.to_string())
-        })?;
+        let auth_json =
+            serde_json::to_string(&auth_msg).map_err(|e| WsError::JsonError(e.to_string()))?;
 
         info!("Отправляю auth-сообщение");
         debug!("Auth payload: {}", auth_json);
 
         // send() отправляет сообщение через WebSocket.
         // Message::Text — текстовое сообщение (JSON).
-        write.send(Message::Text(auth_json)).await.map_err(|e| {
-            WsError::SendFailed(e.to_string())
-        })?;
+        write
+            .send(Message::Text(auth_json))
+            .await
+            .map_err(|e| WsError::SendFailed(e.to_string()))?;
 
         // Шаг 2: Основной цикл обработки сообщений
         loop {
@@ -224,7 +221,7 @@ impl WebSocketClient {
                             // Это значит, что stdout/stderr readers завершились,
                             // т.е. SCPSL процесс завершился.
                             info!("Канал исходящих сообщений закрыт, завершаю WebSocket");
-                            
+
                             // Отправляем Close frame
                             let _ = write.send(Message::Close(None)).await;
                             return Ok(());
@@ -267,6 +264,10 @@ impl WebSocketClient {
                 })?;
 
                 match parsed {
+                    IncomingMessage::AuthSuccess { server } => {
+                        info!("Авторизация успешна для сервера: {}", server);
+                    }
+
                     IncomingMessage::Stdin { server, content } => {
                         // Проверяем, что server совпадает с нашим
                         if server != self.config.server_name {
@@ -279,12 +280,11 @@ impl WebSocketClient {
 
                         info!("Получена команда от API: {}", content);
 
-                        // Отправляем команду в канал для stdin writer'а
-                        // try_send — неблокирующая отправка
                         if let Err(e) = self.incoming_tx.try_send(content) {
                             error!("Не удалось отправить команду в stdin: {}", e);
                         }
                     }
+
                     IncomingMessage::Unknown => {
                         debug!("Получено сообщение неизвестного типа, игнорирую");
                     }

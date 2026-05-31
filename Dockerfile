@@ -13,6 +13,8 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
+    libicu-dev \
+    libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/rcon-console /usr/local/bin/rcon-console
