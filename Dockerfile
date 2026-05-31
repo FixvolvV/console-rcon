@@ -4,12 +4,6 @@ FROM rust:1.83-bookworm AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.toml
 
-# Кэшируем зависимости
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/console_rcon*
-
 COPY src ./src
 RUN cargo build --release
 
