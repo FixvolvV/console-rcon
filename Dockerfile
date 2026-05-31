@@ -18,7 +18,6 @@ RUN ./target/release/scpsl-wrapper --help
 
 FROM debian:trixie-slim AS runtime
 
-s
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
