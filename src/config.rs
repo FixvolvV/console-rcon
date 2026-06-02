@@ -54,14 +54,6 @@ pub struct CliArgs {
     )]
     pub server_name: String,
 
-    /// Секретный ключ для аутентификации
-    #[arg(
-        long = "secret-key",
-        env = "RCON_SECRET_KEY",
-        help = "Secret key for authentication (required)"
-    )]
-    pub secret_key: String,
-
     /// Тип сервера
     #[arg(
         long = "server-type",
@@ -106,7 +98,6 @@ pub struct Config {
     pub port: u16,
     pub api_url: String,
     pub server_name: String,
-    pub secret_key: String,
     pub server_type: String,
     pub reconnect_secs: u64,
     pub strip_ansi: bool,
@@ -123,7 +114,6 @@ impl Config {
             port: args.port,
             api_url: args.api_url,
             server_name: args.server_name,
-            secret_key: args.secret_key,
             server_type: args.server_type,
             reconnect_secs: args.reconnect_secs,
             strip_ansi: args.strip_ansi,

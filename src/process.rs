@@ -16,11 +16,11 @@
 //! =============================================================================
 
 use crate::config::Config;
-use crate::messages::{OutgoingMessage, StdoutMessage};
+use crate::messages::OutgoingMessage;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -83,10 +83,11 @@ pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
     info!("Запускаю сервер: {} {}", config.server_bin, config.port);
 
     // Command::new() создаёт builder для запуска процесса
-    let child = Command::new(&config.server_bin)
+    let child = Command::new("bash")
         // .arg() добавляет аргумент командной строки
         // port.to_string() — конвертируем u16 в String
-        .arg(config.port.to_string())
+        .arg("-c")
+        .arg("for i in {0..100}; do echo $i; sleep 1; done")
         // Stdio::piped() — stdin будет каналом, в который мы можем писать
         .stdin(Stdio::piped())
         // Stdio::piped() — stdout будет каналом, из которого мы можем читать
@@ -121,9 +122,9 @@ pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
 /// * `tx` - Sender канала для исходящих сообщений
 /// * `server_name` - Имя сервера для включения в сообщения
 /// * `strip_ansi` - Удалять ли ANSI-коды
-pub async fn read_stdout(
+pub async fn read_stdio<R: AsyncRead + Unpin>(
     // tokio::process::ChildStdout — async reader для stdout процесса
-    stdout: tokio::process::ChildStdout,
+    stdio: R,
     // mpsc::Sender — отправитель в канал. Clone позволяет иметь несколько отправителей.
     tx: mpsc::Sender<OutgoingMessage>,
     // String, а не &str, потому что эта функция будет жить в отдельной задаче
@@ -133,7 +134,7 @@ pub async fn read_stdout(
 ) {
     // BufReader добавляет буферизацию к reader'у.
     // Это эффективнее чем читать по байту, и позволяет использовать lines().
-    let reader = BufReader::new(stdout);
+    let reader = BufReader::new(stdio);
 
     // .lines() возвращает AsyncLinesReader — итератор по строкам.
     // Это не настоящий итератор (не impl Iterator), а stream, поэтому
@@ -167,8 +168,10 @@ pub async fn read_stdout(
                 }
 
                 // Создаём сообщение
-                let msg =
-                    OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
+                let msg = OutgoingMessage::Stdout {
+                    server: server_name.clone(),
+                    content: content.clone(),
+                };
 
                 // Логируем на уровне debug (только если RUST_LOG=debug)
                 debug!(target: "stdout", "{}", content);
@@ -195,67 +198,6 @@ pub async fn read_stdout(
                 // Это может быть из-за невалидного UTF-8, но BufReader::lines()
                 // использует from_utf8_lossy внутри, так что это маловероятно.
                 error!("Ошибка чтения stdout: {}", e);
-                break;
-            }
-        }
-    }
-}
-
-/// Читает stderr процесса построчно и отправляет сообщения в канал.
-///
-/// Аналогична read_stdout, но читает из stderr.
-/// Мы отправляем оба потока с type: "stdout" на API, потому что
-/// с точки зрения RCON это просто разные консольные потоки.
-pub async fn read_stderr(
-    stderr: tokio::process::ChildStderr,
-    tx: mpsc::Sender<OutgoingMessage>,
-    server_name: String,
-    strip_ansi: bool,
-) {
-    let reader = BufReader::new(stderr);
-    let mut lines = reader.lines();
-
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                if line.trim().is_empty() {
-                    continue;
-                }
-
-                let content = if strip_ansi {
-                    strip_ansi_codes(&line)
-                } else {
-                    line
-                };
-
-                if content.trim().is_empty() {
-                    continue;
-                }
-
-                let msg =
-                    OutgoingMessage::Stdout(StdoutMessage::new(&server_name, content.clone()));
-
-                // Логируем stderr тоже на уровне debug, но с другим target
-                debug!(target: "stderr", "{}", content);
-
-                if let Err(e) = tx.try_send(msg) {
-                    match e {
-                        mpsc::error::TrySendError::Full(_) => {
-                            warn!("Буфер сообщений переполнен, сообщение отброшено (stderr)");
-                        }
-                        mpsc::error::TrySendError::Closed(_) => {
-                            error!("Канал сообщений закрыт, прекращаю чтение stderr");
-                            break;
-                        }
-                    }
-                }
-            }
-            Ok(None) => {
-                info!("SCPSL stderr закрыт");
-                break;
-            }
-            Err(e) => {
-                error!("Ошибка чтения stderr: {}", e);
                 break;
             }
         }

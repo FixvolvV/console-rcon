@@ -165,7 +165,7 @@ async fn main() {
     let strip_ansi = config.strip_ansi;
 
     let stdout_handle = tokio::spawn(async move {
-        process::read_stdout(stdout, outgoing_tx_stdout, server_name_stdout, strip_ansi).await;
+        process::read_stdio(stdout, outgoing_tx_stdout, server_name_stdout, strip_ansi).await;
         info!("Задача stdout reader завершена");
     });
 
@@ -174,7 +174,7 @@ async fn main() {
     let server_name_stderr = config.server_name.clone();
 
     let stderr_handle = tokio::spawn(async move {
-        process::read_stderr(stderr, outgoing_tx_stderr, server_name_stderr, strip_ansi).await;
+        process::read_stdio(stderr, outgoing_tx_stderr, server_name_stderr, strip_ansi).await;
         info!("Задача stderr reader завершена");
     });
 

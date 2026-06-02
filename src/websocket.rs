@@ -19,7 +19,7 @@
 //! =============================================================================
 
 use crate::config::Config;
-use crate::messages::{AuthMessage, IncomingMessage, OutgoingMessage};
+use crate::messages::{IncomingMessage, OutgoingMessage};
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -176,23 +176,6 @@ impl WebSocketClient {
         // split() разделяет stream на read-half и write-half.
         let (mut write, mut read) = ws_stream.split();
 
-        // Шаг 1: Отправляем auth-сообщение
-        let auth_msg = AuthMessage::new(
-            &self.config.server_name,
-            &self.config.server_type,
-            &self.config.secret_key,
-        );
-        let auth_json =
-            serde_json::to_string(&auth_msg).map_err(|e| WsError::JsonError(e.to_string()))?;
-
-        info!("Отправляю auth-сообщение");
-        debug!("Auth payload: {}", auth_json);
-
-        write
-            .send(Message::Text(auth_json))
-            .await
-            .map_err(|e| WsError::SendFailed(e.to_string()))?;
-
         // Шаг 2: Основной цикл обработки сообщений
         loop {
             tokio::select! {
@@ -204,7 +187,7 @@ impl WebSocketClient {
                 outgoing = self.outgoing_rx.recv() => {
                     match outgoing {
                         Some(msg) => {
-                            let json = msg.to_json().map_err(|e| {
+                            let json = serde_json::to_string(&msg).map_err(|e| {
                                 WsError::JsonError(e.to_string())
                             })?;
 
@@ -245,14 +228,8 @@ impl WebSocketClient {
         }
     }
 
-    /// Обрабатывает входящее WebSocket-сообщение.
-    ///
-    /// ВАЖНО: JSON-ошибки парсинга НЕ убивают соединение.
-    /// Это защищает от случайных невалидных сообщений от API.
-    /// Только AuthDenied и системные ошибки приводят к разрыву.
     async fn handle_incoming_message(&self, msg: Message) -> WsResult<()> {
         match msg {
-            // Текстовое сообщение — JSON от API
             Message::Text(text) => {
                 debug!("Получено от API: {}", text);
 
@@ -269,20 +246,6 @@ impl WebSocketClient {
                 };
 
                 match parsed {
-                    IncomingMessage::AuthAccess { server } => {
-                        info!("Авторизация успешна для сервера: {}", server);
-                    }
-
-                    IncomingMessage::AuthDenied { server, reason } => {
-                        error!(
-                            "Авторизация отклонена для {}: {}. Wrapper завершается.",
-                            server,
-                            reason.as_deref().unwrap_or("без указания причины")
-                        );
-                        // Маркер фатальной ошибки — run() поймает и сделает exit
-                        return Err(WsError::ConnectionFailed(AUTH_DENIED_MARKER.to_string()));
-                    }
-
                     IncomingMessage::Stdin { server, content } => {
                         // Проверяем, что server совпадает с нашим
                         if server != self.config.server_name {
@@ -299,39 +262,13 @@ impl WebSocketClient {
                             error!("Не удалось отправить команду в stdin: {}", e);
                         }
                     }
-
-                    IncomingMessage::Unknown => {
-                        debug!("Получено сообщение неизвестного типа, игнорирую");
-                    }
                 }
             }
-
-            // Ping — tokio-tungstenite автоматически отвечает Pong
-            Message::Ping(data) => {
-                debug!("Получен Ping, ответ Pong отправит библиотека автоматически");
-                let _ = data;
-            }
-
-            // Pong — игнорируем
-            Message::Pong(_) => {
-                debug!("Получен Pong");
-            }
-
-            // Close — сервер закрывает соединение
             Message::Close(frame) => {
                 info!("Сервер закрыл соединение: {:?}", frame);
                 return Err(WsError::ConnectionClosed);
             }
-
-            // Binary — не ожидаем бинарных сообщений
-            Message::Binary(_) => {
-                debug!("Получено бинарное сообщение, игнорирую");
-            }
-
-            // Frame — низкоуровневый frame, не используем
-            Message::Frame(_) => {
-                debug!("Получен raw frame, игнорирую");
-            }
+            _ => {}
         }
 
         Ok(())
@@ -360,31 +297,4 @@ pub async fn stdin_writer_task(
     }
 
     info!("Stdin writer завершён");
-}
-
-// =============================================================================
-// ТЕСТЫ
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ws_error_display() {
-        let err = WsError::ConnectionFailed("timeout".to_string());
-        assert_eq!(format!("{}", err), "Ошибка подключения: timeout");
-
-        let err = WsError::ConnectionClosed;
-        assert_eq!(format!("{}", err), "Соединение закрыто");
-    }
-
-    #[test]
-    fn test_auth_denied_marker() {
-        // Проверяем, что маркер не пересекается с реальными сообщениями
-        let err = WsError::ConnectionFailed(AUTH_DENIED_MARKER.to_string());
-        if let WsError::ConnectionFailed(msg) = err {
-            assert_eq!(msg, "AUTH_DENIED");
-        }
-    }
 }
