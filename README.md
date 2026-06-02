@@ -2,14 +2,14 @@
 
 WebSocket-based RCON wrapper для SCP: Secret Laboratory сервера.
 
-## Что это?
+## Что это? А НИЧЁ! Тебе тут нечего делать, кроме того как хуи дрочить.
 
-**SCPSL-Wrapper** — это supervisor-обёртка, которая:
+**SCPSL-Wrapper** — это supervisor-обёртка от конфеты, которая:
 
-1. 🚀 **Запускает SCPSL** (LocalAdmin) как дочерний процесс
-2. 📡 **Перехватывает stdout/stderr** и стримит их через WebSocket на ваш API
-3. 📥 **Принимает команды** от API и выполняет их в консоли SCPSL
-4. 🔄 **Автоматически переподключается** при разрыве соединения
+1. 🚀 **НЕ запускает SCPSL** (LocalAdmin) как приёмный процесс (как ты)
+2. 📡 **Перехватывает твою мамашу** и стримит её вебкам через WebSocket на ваш API
+3. 📥 **Принимает команды от Путина** через API и выполняет их в консоли SCPSL
+4. 🔄 **Автоматически переподключается к серверам Госуслуг** при разрыве соединения
 5. 🛑 **Корректно завершается** при SIGTERM/SIGINT (graceful shutdown)
 
 ```
@@ -23,9 +23,9 @@ WebSocket-based RCON wrapper для SCP: Secret Laboratory сервера.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+## Quick Start. Или па руски - БЫСТРО НАСТРОИЛ БЛЯТЬ!
 
-### 1. Установка Rust (если ещё не установлен)
+### 1. Установка вируса Mozilla язык программирования Rust (если ещё не установлен ёпт)
 
 ```bash
 # Устанавливаем rustup — менеджер версий Rust
@@ -39,7 +39,7 @@ rustc --version   # должно показать версию, например
 cargo --version   # cargo 1.83.0
 ```
 
-### 2. Сборка проекта
+### 2. Сборка говна (главное не нагребите лишнего говна)
 
 ```bash
 # Клонируем/переходим в директорию проекта
@@ -51,7 +51,7 @@ cargo build --release
 # Бинарь будет в: ./target/release/scpsl-wrapper
 ```
 
-### 3. Локальный тест (без SCPSL)
+### 3. Локальный лоховской тест (без SCPSL)
 
 Для теста можно использовать `cat` вместо LocalAdmin — он просто эхо-ит ввод:
 
@@ -77,7 +77,7 @@ RUST_LOG=debug \
 # "
 ```
 
-### 4. Docker-сборка
+### 4. Пиздокер-сборка
 
 ```bash
 # Собираем образ
@@ -94,9 +94,9 @@ docker run -d \
   scpsl-wrapper:latest
 ```
 
-## Конфигурация
+## Дисфигурация
 
-### Переменные окружения
+### Хуеменные окружения
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
@@ -134,7 +134,7 @@ Options:
   -V, --version                  Показать версию
 ```
 
-## Протокол WebSocket
+## Прикол WebSocket
 
 ### Подключение
 
@@ -142,7 +142,7 @@ Wrapper подключается к: `{WRAPPER_API_URL}?server_name={WRAPPER_SER
 
 Пример: `ws://api.example.com/server/rcon/connect?server_name=server1`
 
-### Аутентификация
+### Аутенти.... гок гок гок... фиакция
 
 Первое сообщение после подключения:
 
@@ -167,7 +167,7 @@ Wrapper подключается к: `{WRAPPER_API_URL}?server_name={WRAPPER_SER
 }
 ```
 
-### Входящие сообщения (API → Wrapper)
+### Входящие сообщения? Да да иди нахуй
 
 Команда для выполнения в консоли SCPSL:
 
@@ -181,7 +181,7 @@ Wrapper подключается к: `{WRAPPER_API_URL}?server_name={WRAPPER_SER
 
 > ⚠️ Wrapper проверяет поле `server` и игнорирует команды для других серверов.
 
-## Интеграция с Docker Compose
+## Интеграция с Хуедокер-компотом
 
 ```yaml
 version: '3.8'
@@ -247,9 +247,9 @@ volumes:
   scpsl-config-2:
 ```
 
-## Как это работает (для изучающих Rust)
+## Как это работает? ДА НИКАК!
 
-### Структура проекта
+### Несуществующая структура проекта
 
 ```
 scpsl-wrapper/
@@ -268,7 +268,7 @@ scpsl-wrapper/
 
 ### Основные концепции Rust
 
-#### 1. Ownership и Borrowing
+#### 1. Владение земельным участком в Российской Федерации
 
 ```rust
 // Владение (ownership)
@@ -285,7 +285,7 @@ let mut s4 = String::from("test");
 change(&mut s4);  // &mut s4 — мутабельная ссылка
 ```
 
-#### 2. Async/Await
+#### 2. Асинк Авээээээээээээээйт ээээ ээээ эээээээээээээээээээээ
 
 ```rust
 // async fn возвращает Future — ленивое вычисление
@@ -302,7 +302,7 @@ tokio::spawn(async {
 });
 ```
 
-#### 3. Каналы (mpsc)
+#### 3. Каналы (mpsc) (нет не Ютуба)
 
 ```rust
 // Создаём канал с буфером на 100 сообщений
@@ -322,7 +322,7 @@ tokio::spawn(async move {
 });
 ```
 
-#### 4. Error Handling
+#### 4. Эррор Ебучинг
 
 ```rust
 // Result<T, E> — операция может упасть
@@ -343,7 +343,7 @@ match parse_number("42") {
 }
 ```
 
-### Поток данных
+### Поток жидкой смеси феаклий по вашим джинсам в летнию жару при 40 градусах
 
 ```
 1. main.rs запускает все задачи параллельно через tokio::spawn()
@@ -389,7 +389,7 @@ curl -v ws://your-api:8000/server/rcon/connect
 # В docker-compose: используйте имя сервиса (например, ws://api:8000/...)
 ```
 
-### "Канал сообщений переполнен"
+### "Анал сообщений переполнен"
 
 Увеличьте размер буфера:
 
@@ -397,7 +397,7 @@ curl -v ws://your-api:8000/server/rcon/connect
 WRAPPER_BUFFER_SIZE=50000 ./scpsl-wrapper
 ```
 
-### Отладка
+### Отладка с водкой
 
 ```bash
 # Максимально подробные логи
@@ -410,9 +410,9 @@ RUST_LOG=scpsl_wrapper::websocket=debug ./target/release/scpsl-wrapper
 RUST_LOG=info,scpsl_wrapper::websocket=debug,scpsl_wrapper::process=debug ./target/release/scpsl-wrapper
 ```
 
-## Что делать дальше
+## Что делать дальше? ПРОДАТЬ МАМАШУ РАДИ ЯЗЫКА ПРОГРАММИРОАВНИЯ RUST!
 
-### 1. Установите Rust
+### 1. Установите Rust (не надо)
 
 Если ещё не установлен:
 ```bash
@@ -420,14 +420,14 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 ```
 
-### 2. Соберите проект
+### 2. Соберите этот проект-хуект если вы любите данный экстримальный спорт
 
 ```bash
 cd scpsl-wrapper
 cargo build --release
 ```
 
-### 3. Протестируйте локально
+### 3. НЕ ТЕСТИРУЙТЕ ЛОКАЛЬНО! А то будете лохом
 
 С `cat` вместо SCPSL (для теста без игры):
 ```bash
@@ -437,15 +437,15 @@ RUST_LOG=debug \
 ./target/release/scpsl-wrapper
 ```
 
-### 4. Соберите Docker-образ
+### 4. Соберите Пиздокер-хуёкер-образ
 
 ```bash
 docker build -t scpsl-wrapper:latest .
 ```
 
-### 5. Интегрируйте с вашим API
+### 5. Интегрируйте с вашим говнянным API
 
-Создайте FastAPI эндпоинт для WebSocket:
+Создайте нахуй FastAPI эндпоинт для ебучих WebSocket:
 
 ```python
 from fastapi import FastAPI, WebSocket
@@ -453,23 +453,24 @@ import json
 
 app = FastAPI()
 
+
 @app.websocket("/server/rcon/connect")
 async def rcon_connect(websocket: WebSocket, server_name: str):
     await websocket.accept()
-    
+
     # Первое сообщение — auth
     auth_msg = await websocket.receive_json()
     if auth_msg["type"] != "auth":
         await websocket.close()
         return
-    
+
     # Проверяем secret_key
     if auth_msg["secret_key"] != "your-secret":
         await websocket.close()
         return
-    
+
     print(f"Server {server_name} connected!")
-    
+
     # Основной цикл
     while True:
         try:
@@ -477,20 +478,20 @@ async def rcon_connect(websocket: WebSocket, server_name: str):
             msg = await websocket.receive_json()
             if msg["type"] == "stdout":
                 print(f"[{server_name}] {msg['content']}")
-            
+
             # Можно отправить команду обратно:
             # await websocket.send_json({
             #     "type": "stdin",
             #     "server": server_name,
             #     "content": "bc Hello from API!"
             # })
-            
+
         except Exception as e:
             print(f"Error: {e}")
             break
 ```
 
-### 6. Разверните в продакшене
+### 6. Разверните в продакшене (не забудьте обоссать перед этим сервера)
 
 ```bash
 # Добавьте в docker-compose.yml и запустите
@@ -502,7 +503,7 @@ docker-compose logs -f scpsl-server1
 
 ## Лицензия
 
-MIT License
+Бесплатная лицензия на пиво
 
 ## Автор
 
