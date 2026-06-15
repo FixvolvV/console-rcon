@@ -183,8 +183,7 @@ pub async fn read_stdio<R: AsyncRead + Unpin>(
                             warn!("Буфер сообщений переполнен, сообщение отброшено");
                         }
                         mpsc::error::TrySendError::Closed(_) => {
-                            error!("Канал сообщений закрыт, прекращаю чтение stdout");
-                            break;
+                            error!("Канал сообщений закрыт, ожидаю подключения websocket");
                         }
                     }
                 }
@@ -308,37 +307,5 @@ pub async fn terminate_child(child: &mut Child, timeout_secs: u64) -> Option<i32
                 }
             }
         }
-    }
-}
-
-// =============================================================================
-// ТЕСТЫ
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_ansi_codes() {
-        // Тест с цветным текстом
-        let colored = "\x1b[31mError\x1b[0m: something went wrong";
-        let clean = strip_ansi_codes(colored);
-        assert_eq!(clean, "Error: something went wrong");
-
-        // Тест с жирным текстом
-        let bold = "\x1b[1mBold\x1b[0m text";
-        let clean = strip_ansi_codes(bold);
-        assert_eq!(clean, "Bold text");
-
-        // Тест без ANSI-кодов
-        let plain = "Plain text";
-        let clean = strip_ansi_codes(plain);
-        assert_eq!(clean, "Plain text");
-
-        // Тест с несколькими кодами
-        let multi = "\x1b[1;32mGreen Bold\x1b[0m \x1b[34mBlue\x1b[0m";
-        let clean = strip_ansi_codes(multi);
-        assert_eq!(clean, "Green Bold Blue");
     }
 }

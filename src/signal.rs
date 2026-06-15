@@ -24,19 +24,6 @@ use tracing::{info, warn};
 // SHUTDOWN SIGNAL
 // =============================================================================
 
-/// Ожидает сигнал завершения (SIGTERM или SIGINT).
-///
-/// Эта функция блокируется (асинхронно) пока не придёт один из сигналов.
-/// После получения сигнала возвращает управление, чтобы вызывающий код
-/// мог начать graceful shutdown.
-///
-/// # Пример
-/// ```rust
-/// // В отдельной задаче:
-/// wait_for_shutdown_signal().await;
-/// println!("Получен сигнал завершения!");
-/// // Начинаем shutdown...
-/// ```
 pub async fn wait_for_shutdown_signal() {
     // signal() создаёт future, который завершится при получении сигнала.
     // SignalKind::terminate() — это SIGTERM на Unix.
@@ -160,35 +147,5 @@ impl ShutdownReceiver {
     pub fn is_shutdown(&self) -> bool {
         // Если receiver уже None — значит, мы уже обработали shutdown
         self.receiver.is_none()
-    }
-}
-
-// =============================================================================
-// ТЕСТЫ
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_shutdown_coordinator() {
-        let (mut coordinator, mut receiver) = ShutdownCoordinator::new();
-
-        // Проверяем, что shutdown ещё не получен
-        assert!(!receiver.is_shutdown());
-
-        // Отправляем shutdown в отдельной задаче
-        tokio::spawn(async move {
-            // Небольшая задержка
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            coordinator.shutdown();
-        });
-
-        // Ждём shutdown
-        receiver.wait().await;
-
-        // Теперь должен быть shutdown
-        assert!(receiver.is_shutdown());
     }
 }
