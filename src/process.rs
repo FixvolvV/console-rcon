@@ -83,11 +83,10 @@ pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
     info!("Запускаю сервер: {} {}", config.server_bin, config.port);
 
     // Command::new() создаёт builder для запуска процесса
-    let child = Command::new("bash")
+    let child = Command::new(&config.server_bin)
         // .arg() добавляет аргумент командной строки
         // port.to_string() — конвертируем u16 в String
-        .arg("-c")
-        .arg("for i in {0..100}; do echo $i; sleep 1; done")
+        .arg(config.port.to_string())
         // Stdio::piped() — stdin будет каналом, в который мы можем писать
         .stdin(Stdio::piped())
         // Stdio::piped() — stdout будет каналом, из которого мы можем читать
