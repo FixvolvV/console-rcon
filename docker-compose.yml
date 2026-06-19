@@ -9,7 +9,7 @@ services:
     environment:
       - RCON_SECRET_KEY=54443
       - RCON_SERVER_NAME=server1
-      - RCON_API_URL=${API_URL:-ws://host.docker.internal:8000/server/rcon/connect}
+      - RCON_API_URL=ws://host.docker.internal:8000/server/rcon/connect
       - RUST_LOG=${LOG_LEVEL:-info}
       - RCON_STRIP_ANSI=true
       - UPDATE_ON_START=false

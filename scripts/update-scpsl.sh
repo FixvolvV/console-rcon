@@ -5,6 +5,7 @@ set -e
 GAME_DIR="${GAME_DIR:-/root/game}"
 STEAMCMD_PATH="/usr/bin/steamcmd"
 SCPSL_APP_ID="996560"
+ON_UPDATED="false"
 
 # -----------------------------------------------------------------------------
 # Установка SteamCMD

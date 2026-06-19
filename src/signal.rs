@@ -2,6 +2,13 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 
+<<<<<<< HEAD
+=======
+// =============================================================================
+// SHUTDOWN SIGNAL
+// =============================================================================
+
+>>>>>>> 641ecef3cf25f15d39c37346138bc32ad129d72a
 pub async fn wait_for_shutdown_signal() {
     let mut sigterm =
         signal(SignalKind::terminate()).expect("Не удалось зарегистрировать обработчик SIGTERM");

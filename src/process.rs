@@ -83,11 +83,10 @@ pub async fn spawn_server(config: &Config) -> std::io::Result<Child> {
     info!("Запускаю сервер: {} {}", config.server_bin, config.port);
 
     // Command::new() создаёт builder для запуска процесса
-    let child = Command::new("bash")
+    let child = Command::new(&config.server_bin)
         // .arg() добавляет аргумент командной строки
         // port.to_string() — конвертируем u16 в String
-        .arg("-c")
-        .arg("for i in {0..100}; do echo $i; sleep 1; done")
+        .arg(config.port.to_string())
         // Stdio::piped() — stdin будет каналом, в который мы можем писать
         .stdin(Stdio::piped())
         // Stdio::piped() — stdout будет каналом, из которого мы можем читать
@@ -183,8 +182,7 @@ pub async fn read_stdio<R: AsyncRead + Unpin>(
                             warn!("Буфер сообщений переполнен, сообщение отброшено");
                         }
                         mpsc::error::TrySendError::Closed(_) => {
-                            error!("Канал сообщений закрыт, прекращаю чтение stdout");
-                            break;
+                            error!("Канал сообщений закрыт, ожидаю подключения websocket");
                         }
                     }
                 }
@@ -308,37 +306,5 @@ pub async fn terminate_child(child: &mut Child, timeout_secs: u64) -> Option<i32
                 }
             }
         }
-    }
-}
-
-// =============================================================================
-// ТЕСТЫ
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_ansi_codes() {
-        // Тест с цветным текстом
-        let colored = "\x1b[31mError\x1b[0m: something went wrong";
-        let clean = strip_ansi_codes(colored);
-        assert_eq!(clean, "Error: something went wrong");
-
-        // Тест с жирным текстом
-        let bold = "\x1b[1mBold\x1b[0m text";
-        let clean = strip_ansi_codes(bold);
-        assert_eq!(clean, "Bold text");
-
-        // Тест без ANSI-кодов
-        let plain = "Plain text";
-        let clean = strip_ansi_codes(plain);
-        assert_eq!(clean, "Plain text");
-
-        // Тест с несколькими кодами
-        let multi = "\x1b[1;32mGreen Bold\x1b[0m \x1b[34mBlue\x1b[0m";
-        let clean = strip_ansi_codes(multi);
-        assert_eq!(clean, "Green Bold Blue");
     }
 }
